@@ -1,0 +1,120 @@
+# Dockerfile for Raspberry Pi 2 and 3
+FROM arm32v5/debian:bullseye-slim
+LABEL version="1.0.0" \
+	description="ArchiveTeam Warrior container for Raspberry Pi arm32"
+
+# Install dependencies
+RUN apt-get update
+RUN apt-get install -y --no-install-recommends \
+	curl \
+	git \
+	net-tools \
+	libgnutls30 \
+	liblua5.1-0 \
+	python2.7 \
+#	python-pip \
+#	python-setuptools \
+#	python-wheel \
+	python3.9 \
+	python3.9-dev \
+#	python3-setuptools \
+#	python3-wheel \
+	sudo \
+	wget \
+	rsync \
+	&& useradd -d /home/warrior -m -U warrior \
+	&& echo "warrior ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers \
+	&& mkdir -p /data/data \
+	&& chown -R warrior:warrior /data/data
+
+RUN apt-get install -y --no-install-recommends \
+	autoconf automake  \
+	build-essential \
+	flex \
+	libgnutls28-dev \
+	libidn2-0-dev \
+	uuid-dev \
+	libpsl-dev \
+	libpcre2-dev \
+	liblua5.1-0-dev \
+	libzstd-dev \
+	zstd \
+	zlib1g-dev \
+	ca-certificates \
+	python3-distutils
+RUN curl https://bootstrap.pypa.io/get-pip.py -o get-pip.py
+RUN python3.9 get-pip.py
+RUN python3.9 -m pip install setuptools
+RUN curl https://bootstrap.pypa.io/pip/2.7/get-pip.py --output get-pip2.py
+RUN python2.7 get-pip2.py
+RUN python2.7 -m pip install setuptools
+RUN python3.9 -m pip install zstandard 
+
+WORKDIR /tmp
+#RUN curl -o wget-1.14.lua.LATEST.tar.bz2 \
+#		https://warriorhq.archiveteam.org/downloads/wget-lua/wget-1.14.lua.LATEST.tar.bz2 \
+#	&& tar -jxf /tmp/wget-1.14.lua.LATEST.tar.bz2 \
+#		--strip-components=1
+
+# https://github.com/ArchiveTeam/wget-lua/archive/refs/tags/v1.20.3-at.20211001.01.tar.gz
+#RUN  git clone https://git.savannah.gnu.org/git/gnulib.git \
+
+RUN apt-get install pkg-config automake autoconf2.69 texinfo autopoint liblua5.1-0 liblua5.1-0-dev  \
+	lua-socket lua-socket-dev gettext texi2html gperf --reinstall -y \
+	&& git clone --branch v1.20.3-at https://github.com/ArchiveTeam/wget-lua.git \
+        && cd wget-lua && ./bootstrap && ./configure --with-ssl=gnutls --disable-nls \
+	&& make \
+	&& make install \
+	&& cp src/wget /usr/bin/wget-lua \
+	&& chmod a+x /usr/bin/wget-lua \
+        && mkdir -p /home/warrior/data \
+	&& cp /usr/bin/wget-lua /wget \
+	&& cp /usr/bin/wget-lua /home/warrior/data/wget-at-gnutls \
+	&& cp /usr/bin/wget-lua /wget-at \
+	&& cp /usr/bin/wget-lua /home/warrior/data/wget-at
+
+
+#RUN apt-get remove -y --purge \
+#	autoconf \
+#	curl \
+#	build-essential \
+#	flex \
+#	libgnutls28-dev \
+#	libidn2-0-dev \
+#	uuid-dev \
+#	libpsl-dev \
+#	libpcre2-dev \
+#	liblua5.1-0-dev \
+#	zlib1g-dev \
+#	&& apt-get clean -y \
+#	&& apt-get autoremove -y --purge \
+#	&& rm -r /var/lib/apt/lists/* \
+#	&& rm -r /tmp/*
+
+RUN python2.7 -m pip  install requests \
+	&& python2.7 -m pip install six \
+	&& python2.7 -m pip install warc \
+	&& python3.9 -m pip install requests \
+	&& python3.9 -m pip install six \
+	&& python3.9 -m pip install warc
+
+RUN python3.9 -m pip install seesaw
+
+WORKDIR /home/warrior
+USER warrior
+RUN mkdir /home/warrior/projects
+
+# Expose the persistent data to the host.  This will allow the user
+# to not have to reconfigure the container across runs.
+VOLUME /data/data
+VOLUME /home/warrior/projects/config.json
+
+# Expose web interface port
+EXPOSE 8001
+
+ENTRYPOINT ["run-warrior3", \
+	"--projects-dir", "/home/warrior/projects", \
+	"--data-dir", "/data/data", \
+	"--warrior-hq", "http://warriorhq.archiveteam.org", \
+	"--port", "8001", \
+	"--real-shutdown"]
